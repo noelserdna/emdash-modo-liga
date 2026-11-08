@@ -73,3 +73,91 @@ test("driverCloudflare: URLs, token y PATCH; errores de la API", async () => {
   assert.equal(llamadas[1]!.init?.body, JSON.stringify({ proxied: false, ttl: 60 }));
   await assert.rejects(driverCloudflare("zona-mala", "tok", fetchFalso).leer("x"), /API de Cloudflare .*403 Invalid zone/);
 });
+
+// ── Alta del registro normal (CLI `dns`) ─────────────────────────────────────
+
+import { describirAccion, establecerNormales, planificarNormal, zonaPorNombre, type DriverDnsCompleto } from "../src/core/dns.ts";
+
+function driverFalsoCompleto(inicial: RegistroDns[]) {
+  const registros = inicial.map((r) => ({ ...r }));
+  const llamadas: string[] = [];
+  let n = 0;
+  const driver: DriverDnsCompleto = {
+    async leer(nombre) { return registros.filter((r) => r.name === nombre); },
+    async actualizar(id, c) { llamadas.push(`actualizar ${id} ${JSON.stringify(c)}`); Object.assign(registros.find((r) => r.id === id)!, c); },
+    async crear(nombre, e) { llamadas.push(`crear ${nombre} ${e.type} ${e.content} ${e.proxied}`); registros.push({ id: `nuevo-${++n}`, name: nombre, ...e }); },
+    async borrar(id) { llamadas.push(`borrar ${id}`); registros.splice(registros.findIndex((r) => r.id === id), 1); },
+  };
+  return { driver, registros, llamadas };
+}
+
+test("planificarNormal: nada, actualizar, crear, conflicto y reemplazar", () => {
+  const espejo = "sitio.netlify.app";
+  assert.equal(planificarNormal("ejemplo.es", [cname("ejemplo.es")], espejo).accion, "nada");
+  assert.equal(planificarNormal("ejemplo.es", [cname("ejemplo.es", { content: "SITIO.netlify.app" })], espejo).accion, "nada");
+  const sinProxy = planificarNormal("ejemplo.es", [cname("ejemplo.es", { proxied: false, ttl: 60 })], espejo);
+  assert.deepEqual(sinProxy.accion === "actualizar" && sinProxy.cambios, { proxied: true, ttl: 1 });
+  assert.equal(planificarNormal("ejemplo.es", [], espejo).accion, "crear");
+  assert.equal(planificarNormal("ejemplo.es", [{ ...cname("ejemplo.es"), type: "TXT", content: "v=spf1" }], espejo).accion, "crear");
+  const otroCname = planificarNormal("ejemplo.es", [cname("ejemplo.es", { content: "viejo.netlify.app" })], espejo);
+  assert.equal(otroCname.accion, "conflicto");
+  assert.match(describirAccion(otroCname, espejo), /CONFLICTO, ya hay un CNAME a viejo.netlify.app/);
+  const otroCnameForzado = planificarNormal("ejemplo.es", [cname("ejemplo.es", { content: "viejo.netlify.app" })], espejo, true);
+  assert.deepEqual(otroCnameForzado.accion === "actualizar" && otroCnameForzado.cambios, { content: espejo, proxied: true, ttl: 1 });
+  const registrosA: RegistroDns[] = [{ id: "a1", name: "ejemplo.es", type: "A", content: "1.2.3.4", proxied: true, ttl: 1 }, { id: "a2", name: "ejemplo.es", type: "AAAA", content: "::1", proxied: true, ttl: 1 }];
+  assert.equal(planificarNormal("ejemplo.es", registrosA, espejo).accion, "conflicto");
+  const reemplazo = planificarNormal("ejemplo.es", registrosA, espejo, true);
+  assert.equal(reemplazo.accion, "reemplazar");
+  assert.match(describirAccion(reemplazo, espejo), /borrar A 1.2.3.4, AAAA ::1 y crear CNAME/);
+  // Solo cuentan los registros del propio nombre
+  assert.equal(planificarNormal("www.ejemplo.es", [cname("ejemplo.es")], espejo).accion, "crear");
+});
+
+test("establecerNormales: simula sin tocar nada, no aplica con conflictos y ejecuta el plan completo", async () => {
+  const espejo = "sitio.netlify.app";
+  const { driver, registros, llamadas } = driverFalsoCompleto([cname("www.ejemplo.es", { proxied: false, ttl: 60 }), { id: "a1", name: "viejo.ejemplo.es", type: "A", content: "1.2.3.4", proxied: true, ttl: 1 }]);
+  const simulado = await establecerNormales(driver, ["ejemplo.es", "www.ejemplo.es"], espejo);
+  assert.deepEqual(simulado.plan.map((p) => p.accion), ["crear", "actualizar"]);
+  assert.equal(simulado.aplicado, false);
+  assert.equal(llamadas.length, 0);
+  const conConflicto = await establecerNormales(driver, ["ejemplo.es", "viejo.ejemplo.es"], espejo, { aplicar: true });
+  assert.deepEqual(conConflicto.plan.map((p) => p.accion), ["crear", "conflicto"]);
+  assert.equal(conConflicto.aplicado, false);
+  assert.equal(llamadas.length, 0, "con un conflicto no se crea ni el registro limpio");
+  const aplicado = await establecerNormales(driver, ["ejemplo.es", "www.ejemplo.es", "viejo.ejemplo.es"], espejo, { aplicar: true, reemplazar: true });
+  assert.equal(aplicado.aplicado, true);
+  assert.deepEqual(llamadas, [
+    "crear ejemplo.es CNAME sitio.netlify.app true",
+    'actualizar id-www.ejemplo.es {"proxied":true,"ttl":1}',
+    "borrar a1",
+    "crear viejo.ejemplo.es CNAME sitio.netlify.app true",
+  ]);
+  assert.ok(registros.every((r) => r.type === "CNAME" && r.content === espejo && r.proxied));
+  const otraVez = await establecerNormales(driver, ["ejemplo.es", "www.ejemplo.es", "viejo.ejemplo.es"], espejo, { aplicar: true });
+  assert.ok(otraVez.plan.every((p) => p.accion === "nada"));
+  assert.equal(llamadas.length, 4);
+});
+
+test("driverCloudflare crear/borrar y zonaPorNombre: URLs, métodos y errores", async () => {
+  const llamadas: { url: string; init: RequestInit | undefined }[] = [];
+  const fetchFalso = (async (url: string, init?: RequestInit) => {
+    llamadas.push({ url, init });
+    if (url.endsWith("/zones?name=ejemplo.es&status=active")) return Response.json({ success: true, result: [{ id: "zona-1", name: "ejemplo.es" }] });
+    if (url.endsWith("/zones?name=nadie.es&status=active")) return Response.json({ success: true, result: [] });
+    if (url.includes("/zones?name=sinpermiso.es")) return Response.json({ success: false, errors: [{ message: "Unauthorized" }] }, { status: 403 });
+    return Response.json({ success: true, result: { id: "r-1" } });
+  }) as unknown as typeof fetch;
+  assert.equal(await zonaPorNombre("ejemplo.es", "tok", fetchFalso), "zona-1");
+  assert.equal(new Headers(llamadas[0]!.init?.headers).get("Authorization"), "Bearer tok");
+  await assert.rejects(zonaPorNombre("nadie.es", "tok", fetchFalso), /No hay ninguna zona activa llamada nadie.es/);
+  await assert.rejects(zonaPorNombre("sinpermiso.es", "tok", fetchFalso), /403 Unauthorized .*Zone → Zone → Read/);
+  const d = driverCloudflare("zona-1", "tok", fetchFalso);
+  await d.crear("ejemplo.es", { type: "CNAME", content: "s.netlify.app", proxied: true, ttl: 1 });
+  const crear = llamadas.at(-1)!;
+  assert.equal(crear.url, "https://api.cloudflare.com/client/v4/zones/zona-1/dns_records");
+  assert.equal(crear.init?.method, "POST");
+  assert.deepEqual(JSON.parse(String(crear.init?.body)), { type: "CNAME", name: "ejemplo.es", content: "s.netlify.app", proxied: true, ttl: 1 });
+  await d.borrar("r-1");
+  assert.equal(llamadas.at(-1)!.url, "https://api.cloudflare.com/client/v4/zones/zona-1/dns_records/r-1");
+  assert.equal(llamadas.at(-1)!.init?.method, "DELETE");
+});

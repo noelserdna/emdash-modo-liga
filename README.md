@@ -71,13 +71,20 @@ export default {
 "triggers": { "crons": ["* * * * *"] }
 ```
 
-DNS en Cloudflare (a mano, una vez): `CNAME ejemplo.es → mi-espejo.netlify.app` y `CNAME www → mi-espejo.netlify.app`, ambos **proxied** (nube naranja). Con las `routes`, el Worker atiende todas las peticiones; el CNAME solo importa cuando se quita el proxy.
+Registros DNS «normales» en Cloudflare (una vez): `CNAME ejemplo.es → mi-espejo.netlify.app` y `CNAME www → mi-espejo.netlify.app`, ambos **proxied** (nube naranja). Los crea la CLI con un token de API **Zone → DNS → Edit** + **Zone → Zone → Read** limitado a la zona (el mismo que después usa el plugin), leído de un fichero para que no pase por la pantalla:
+
+```bash
+npx emdash-modo-liga dns --dominio ejemplo.es --espejo mi-espejo.netlify.app --token-fichero ~/.cf-token            # muestra el plan
+npx emdash-modo-liga dns --dominio ejemplo.es --espejo mi-espejo.netlify.app --token-fichero ~/.cf-token --aplicar  # lo ejecuta
+```
+
+Con las `routes`, el Worker atiende todas las peticiones; el CNAME solo importa cuando se quita el proxy. Si el sitio ya estaba publicado con el apex y `www` como *Custom Domains* del Worker, el orden es: sustituir esas entradas por las `routes` de arriba, `wrangler deploy` (borra los Custom Domains y sus registros DNS) y, acto seguido, `emdash-modo-liga dns … --aplicar`. Entre ambos pasos el dominio queda unos segundos sin registro: hazlo fuera de una ventana de partido. Wrangler no puede hacerlo solo: su sesión OAuth no incluye permisos de DNS.
 
 Secretos del Worker:
 
 ```bash
 openssl rand -base64 32 | wrangler secret put MODO_LIGA_FIRMA        # el mismo valor va a Netlify como ESPEJO_FIRMA
-wrangler secret put MODO_LIGA_CF_TOKEN                               # Zone→DNS→Edit
+wrangler secret put MODO_LIGA_CF_TOKEN                               # Zone→DNS→Edit + Zone→Read; o bash espejo/token-cf.sh ~/.cf-token
 wrangler secret put MODO_LIGA_BUILD_HOOK                             # URL del build hook de Netlify
 wrangler secret put MODO_LIGA_FOOTBALL_DATA_TOKEN                    # opcional
 ```
