@@ -4,12 +4,12 @@
 Plugin de <a href="https://emdashcms.com">EmDash CMS</a> para sitios en Cloudflare Workers que, los días de partido de LaLiga, se mudan solos a una copia de emergencia en Netlify y vuelven cuando termina el bloqueo.</p>
 
 <p align="center">
-  <img alt="EmDash ≥ 1.4" src="https://img.shields.io/badge/EmDash-%E2%89%A5%201.4-16201b?style=flat">
-  <img alt="Cloudflare Workers" src="https://img.shields.io/badge/Cloudflare-Workers-f38020?logo=cloudflare&logoColor=white&style=flat">
-  <img alt="Espejo en Netlify" src="https://img.shields.io/badge/espejo-Netlify-00c7b7?logo=netlify&logoColor=white&style=flat">
-  <img alt="50 tests" src="https://img.shields.io/badge/tests-50%20en%20verde-1f7a4a?style=flat">
-  <img alt="Licencia MIT" src="https://img.shields.io/badge/licencia-MIT-5b6a62?style=flat">
-  <a href="https://noelserdna.github.io/emdash-modo-liga/"><img alt="Guía para no técnicos" src="https://img.shields.io/badge/gu%C3%ADa-para%20no%20t%C3%A9cnicos-1f7a4a?logo=github&style=flat"></a>
+  <img alt="EmDash ≥ 1.4" src="docs/img/badges/emdash.svg">
+  <img alt="Cloudflare Workers" src="docs/img/badges/cloudflare-workers.svg">
+  <img alt="Espejo en Netlify" src="docs/img/badges/netlify.svg">
+  <img alt="50 tests" src="docs/img/badges/tests.svg">
+  <img alt="Licencia MIT" src="docs/img/badges/licencia.svg">
+  <a href="https://noelserdna.github.io/emdash-modo-liga/"><img alt="Guía para no técnicos" src="docs/img/badges/guia.svg"></a>
 </p>
 
 <p align="center"><a href="https://noelserdna.github.io/emdash-modo-liga/">📖 Guía ilustrada, sin tecnicismos</a> · <a href="./README.en.md">English summary</a> · <a href="#empezar">Empezar</a> · <a href="#la-cli">CLI</a> · <a href="#visto-en-producción">Visto en producción</a></p>
