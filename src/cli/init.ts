@@ -43,6 +43,7 @@ export async function init(o: OpcionesInit): Promise<string[]> {
   };
   await escribir("netlify.toml", generarNetlifyToml(toml));
   await escribir("build.sh", await readFile(join(o.plantillas, "build.sh"), "utf8"));
+  await escribir("secretos.sh", await readFile(join(o.plantillas, "secretos.sh"), "utf8"));
   await escribir(
     "package.json",
     JSON.stringify(
@@ -75,7 +76,10 @@ La genera \`emdash-modo-liga init\`; los pasos manuales están en la documentaci
    (\`MODO_LIGA_ORIGEN\`, \`MODO_LIGA_SITIO\`, \`MODO_LIGA_MODO\`, \`NODE_VERSION\`) ya van en \`netlify.toml\`.
    Para el certificado mensual: \`CF_Token\`, \`CF_Zone_ID\`, \`NETLIFY_AUTH_TOKEN\`, \`NETLIFY_SITE_ID\`.
    Sin \`ESPEJO_FIRMA\` el build publica solo la página de aviso y deja todo lo demás en proxy al origen.
-4. Build hooks: crear uno y guardarlo en el Worker como secreto \`MODO_LIGA_BUILD_HOOK\`.
+   Atajo: \`bash ${o.carpeta}/secretos.sh <Project ID>\` genera el secreto y lo guarda en el Worker y en Netlify
+   sin mostrarlo (necesita \`npx wrangler login\` y \`npx netlify login\`).
+4. Build hooks: crear uno y guardarlo en el Worker: \`npx wrangler secret put MODO_LIGA_BUILD_HOOK\` (pegar la URL).
+   El token de Cloudflare (Zone → DNS → Edit, solo esa zona): \`npx wrangler secret put MODO_LIGA_CF_TOKEN\`.
 5. Lanzar un primer deploy y una vez la tarea \`cert\` (\`curl -X POST -d '{"tarea":"cert"}' <build hook>\`).
 `,
   );
