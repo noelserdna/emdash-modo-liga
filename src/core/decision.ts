@@ -14,8 +14,10 @@ export interface ParametrosDecision {
   ticksParaEntrar: number;
   ticksParaSalir: number;
   ticksColaLimpia: number;
-  /** Tiempo mínimo en cada estado antes de cambiar (salvo forzado). */
+  /** Tiempo mínimo dentro antes de salir (salvo forzado); entrar nunca espera. */
   permanenciaMs: number;
+  /** Margen previo a cada partido: en la pre-ventana del siguiente partido la cola del anterior no se recorta. */
+  antesMs: number;
 }
 
 export const PARAMETROS_POR_DEFECTO: ParametrosDecision = {
@@ -25,6 +27,7 @@ export const PARAMETROS_POR_DEFECTO: ParametrosDecision = {
   ticksParaSalir: 3,
   ticksColaLimpia: 2,
   permanenciaMs: 20 * 60_000,
+  antesMs: 30 * 60_000,
 };
 
 export interface EstadoDecision {
@@ -71,7 +74,9 @@ export function decidir(e: EntradaDecision): Decision {
 
   const calendario = dentroDeVentana(e.ventanas, e.ahora);
   const ultimoInicio = ultimoInicioAntes(e.inicios, e.ahora);
-  const enCola = calendario && ultimoInicio !== null && e.ahora >= ultimoInicio + p.colaMs;
+  const proximoInicio = e.inicios.filter((i) => i > e.ahora).sort((a, b) => a - b)[0] ?? null;
+  const preVentanaSiguiente = proximoInicio !== null && proximoInicio - e.ahora <= p.antesMs;
+  const enCola = calendario && ultimoInicio !== null && e.ahora >= ultimoInicio + p.colaMs && !preVentanaSiguiente;
   const colaLimpia = enCola && hayDeteccion && contadores.ticksLimpios >= p.ticksColaLimpia;
   const porDeteccion = hayDeteccion && (e.actual.dentro ? contadores.ticksLimpios < p.ticksParaSalir : contadores.ticksPositivos >= p.ticksParaEntrar);
 
@@ -90,8 +95,9 @@ export function decidir(e: EntradaDecision): Decision {
     motivo = porCalendario ? "calendario" : porDeteccionEfectiva ? "deteccion" : colaLimpia ? "cola-recortada" : "ninguno";
   }
 
-  if (deseado !== e.actual.dentro && e.actual.desde > 0 && e.ahora - e.actual.desde < p.permanenciaMs) {
-    return cerrar(e, e.actual.dentro, "permanencia", contadores);
+  // La permanencia solo retiene la salida: entrar en modo liga es la dirección segura.
+  if (!deseado && e.actual.dentro && e.actual.desde > 0 && e.ahora - e.actual.desde < p.permanenciaMs) {
+    return cerrar(e, true, "permanencia", contadores);
   }
   return cerrar(e, deseado, motivo, contadores);
 }

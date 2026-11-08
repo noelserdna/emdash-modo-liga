@@ -19,8 +19,11 @@ CLI=./node_modules/.bin/emdash-modo-liga
 
 # Netlify instala las dependencias donde encuentra un lockfile (a menudo la raíz del
 # repositorio, no esta carpeta): aquí se instala lo de espejo/ si falta.
-if [ ! -x "$CLI" ]; then
+# Si el plugin viene de git (#rama), Netlify guarda node_modules en caché y nunca lo
+# actualizaría: se reinstala en cada build para seguir la rama.
+if [ ! -x "$CLI" ] || grep -Eq '"emdash-modo-liga": *"(github:|git\+|https?://)' package.json; then
   echo "modo-liga: instalando dependencias de $(pwd)"
+  rm -rf node_modules/emdash-modo-liga node_modules/.bin/emdash-modo-liga
   npm install --no-audit --no-fund --loglevel=warn
 fi
 

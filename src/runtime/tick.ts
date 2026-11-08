@@ -111,7 +111,7 @@ export async function ejecutarTick(ctx: Ctx, opciones: OpcionesModoLiga = {}, de
     forzado: c.forzado,
     bloqueado,
     actual: estado.decision,
-    parametros: { politica: c.politica, permanenciaMs: c.permanenciaMs },
+    parametros: { politica: c.politica, permanenciaMs: c.permanenciaMs, antesMs: c.antesMs },
   });
   estado.decision = decision.estado;
   estado.motivo = decision.motivo;

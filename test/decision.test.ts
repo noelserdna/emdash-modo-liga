@@ -81,3 +81,17 @@ test("política deteccion: sin datos conserva el estado; con datos sigue la hist
   // fuera de calendario, 1 positivo: dentro
   assert.equal(decidir({ ...base, ahora: t("2026-11-10T21:00:00Z"), parametros: p, bloqueado: true }).dentro, true);
 });
+
+test("dos partidos seguidos: la cola del primero no se recorta en la pre-ventana del segundo y entrar no espera", () => {
+  const inicios2 = [t("2026-11-08T15:15:00Z"), t("2026-11-08T17:30:00Z")];
+  const b2 = { ...base, inicios: inicios2, ventanas: ventanasDe(inicios2) };
+  // 17:20Z: en la cola del primero (15:15 + 2 h) pero a 10 min del segundo: los ticks limpios no recortan
+  let d = decidir({ ...b2, ahora: t("2026-11-08T17:20:00Z"), bloqueado: false, actual: { dentro: true, desde: t("2026-11-08T14:45:00Z"), ticksPositivos: 0, ticksLimpios: 5 } });
+  assert.deepEqual([d.dentro, d.motivo], [true, "calendario"]);
+  // Fuera desde hace 6 min y la detección dice bloqueado: se entra sin esperar la permanencia
+  d = decidir({ ...b2, ahora: t("2026-11-08T17:16:00Z"), bloqueado: true, actual: { dentro: false, desde: t("2026-11-08T17:10:00Z"), ticksPositivos: 0, ticksLimpios: 2 } });
+  assert.deepEqual([d.dentro, d.motivo, d.cambia], [true, "calendario", true]);
+  // Con un solo partido, la cola sí se recorta (comportamiento anterior intacto)
+  d = decidir({ ...base, ahora: t("2026-11-08T22:35:00Z"), bloqueado: false, actual: { dentro: true, desde: t("2026-11-08T19:30:00Z"), ticksPositivos: 0, ticksLimpios: 1 } });
+  assert.deepEqual([d.dentro, d.motivo], [false, "cola-recortada"]);
+});
