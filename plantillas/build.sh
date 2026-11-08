@@ -15,6 +15,14 @@ set -euo pipefail
 
 export MODO_LIGA_FIRMA="${MODO_LIGA_FIRMA:-${ESPEJO_FIRMA:-}}"
 SITIO="${MODO_LIGA_SITIO:-${URL:-}}"
+CLI=./node_modules/.bin/emdash-modo-liga
+
+# Netlify instala las dependencias donde encuentra un lockfile (a menudo la raíz del
+# repositorio, no esta carpeta): aquí se instala lo de espejo/ si falta.
+if [ ! -x "$CLI" ]; then
+  echo "modo-liga: instalando dependencias de $(pwd)"
+  npm install --no-audit --no-fund --loglevel=warn
+fi
 
 TAREA="crawl"
 if [ -n "${INCOMING_HOOK_BODY:-}" ]; then
@@ -26,10 +34,10 @@ copia() {
   if [ -z "${MODO_LIGA_ORIGEN:-}" ] || [ -z "$SITIO" ] || [ -z "$MODO_LIGA_FIRMA" ]; then
     echo "modo-liga: falta ESPEJO_FIRMA (o MODO_LIGA_ORIGEN / MODO_LIGA_SITIO). Se publica solo la página de aviso;" >&2
     echo "modo-liga: todo lo demás irá por proxy firmado al origen hasta el próximo build con el secreto." >&2
-    npx emdash-modo-liga aviso --sitio "${SITIO:-https://localhost}" --salida publico
+    "$CLI" aviso --sitio "${SITIO:-https://localhost}" --salida publico
     return 0
   fi
-  npx emdash-modo-liga crawl \
+  "$CLI" crawl \
     --origen "$MODO_LIGA_ORIGEN" --sitio "$SITIO" \
     --modo "${MODO_LIGA_MODO:-copia-y-proxy}" --salida publico
 }
