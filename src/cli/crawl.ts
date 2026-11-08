@@ -121,7 +121,11 @@ export async function crawl(o: OpcionesCrawl): Promise<ResultadoCrawl> {
     }
     const r = await fetch(origen + ruta, { redirect: "manual", headers: { "user-agent": UA, "x-modo-liga-firma": firma } });
     if (r.headers.get("x-modo-liga-origen") !== "1") {
-      throw new Error(`${ruta}: la respuesta no viene del origen del modo liga (falta x-modo-liga-origen). ¿Es ${origen} el custom domain del Worker con withModoLiga?`);
+      // Los ficheros estáticos (/_astro/*, fuentes, imágenes) los sirve la capa de assets de
+      // Cloudflare sin pasar por el Worker: llegan sin marca y son inofensivos. El HTML, no.
+      const tipo = (r.headers.get("content-type") ?? "").toLowerCase();
+      const estatico = esRecurso(ruta) && !/html|xml|json/.test(tipo);
+      if (!estatico) throw new Error(`${ruta}: la respuesta no viene del origen del modo liga (falta x-modo-liga-origen). ¿Es ${origen} el custom domain del Worker con withModoLiga?`);
     }
     const sc = r.headers.get("set-cookie") ?? "";
     if (COOKIES_SESION.test(sc)) throw new Error(`${ruta}: la respuesta trae una cookie de sesión; la copia no sería anónima.`);
