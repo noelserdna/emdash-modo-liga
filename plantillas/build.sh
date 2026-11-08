@@ -3,14 +3,18 @@
 # con un cuerpo JSON {"tarea":"crawl"} o {"tarea":"cert"}; Netlify lo deja en
 # INCOMING_HOOK_BODY. Sin cuerpo (deploy manual o por git) se hace la copia.
 #
-# Variables del sitio en Netlify (Build):
+# Variables (las no secretas ya están en netlify.toml → [build.environment]):
 #   MODO_LIGA_ORIGEN   https://origen.<dominio>        (custom domain del Worker)
 #   MODO_LIGA_SITIO    https://<dominio>
-#   MODO_LIGA_FIRMA    secreto compartido con el Worker (el mismo que ESPEJO_FIRMA)
 #   MODO_LIGA_MODO     copia-y-proxy | proxy-total | solo-copia   (opcional)
-# Para la tarea cert, además:
+#   ESPEJO_FIRMA       secreto compartido con el Worker (UI de Netlify, ámbitos Builds y Runtime);
+#                      también se acepta como MODO_LIGA_FIRMA.
+# Para la tarea cert, además (secretas, en la UI de Netlify):
 #   CF_Token, CF_Zone_ID (token Zone→DNS→Edit), NETLIFY_AUTH_TOKEN, NETLIFY_SITE_ID
 set -euo pipefail
+
+export MODO_LIGA_FIRMA="${MODO_LIGA_FIRMA:-${ESPEJO_FIRMA:-}}"
+SITIO="${MODO_LIGA_SITIO:-${URL:-}}"
 
 TAREA="crawl"
 if [ -n "${INCOMING_HOOK_BODY:-}" ]; then
@@ -19,14 +23,20 @@ fi
 echo "modo-liga: tarea=$TAREA"
 
 copia() {
+  if [ -z "${MODO_LIGA_ORIGEN:-}" ] || [ -z "$SITIO" ] || [ -z "$MODO_LIGA_FIRMA" ]; then
+    echo "modo-liga: falta ESPEJO_FIRMA (o MODO_LIGA_ORIGEN / MODO_LIGA_SITIO). Se publica solo la página de aviso;" >&2
+    echo "modo-liga: todo lo demás irá por proxy firmado al origen hasta el próximo build con el secreto." >&2
+    npx emdash-modo-liga aviso --sitio "${SITIO:-https://localhost}" --salida publico
+    return 0
+  fi
   npx emdash-modo-liga crawl \
-    --origen "$MODO_LIGA_ORIGEN" --sitio "$MODO_LIGA_SITIO" \
+    --origen "$MODO_LIGA_ORIGEN" --sitio "$SITIO" \
     --modo "${MODO_LIGA_MODO:-copia-y-proxy}" --salida publico
 }
 
 certificado() {
   : "${CF_Token:?falta CF_Token}" "${CF_Zone_ID:?falta CF_Zone_ID}" "${NETLIFY_AUTH_TOKEN:?falta NETLIFY_AUTH_TOKEN}" "${NETLIFY_SITE_ID:?falta NETLIFY_SITE_ID}"
-  DOMINIO=$(node -e 'console.log(new URL(process.argv[1]).hostname)' "$MODO_LIGA_SITIO")
+  DOMINIO=$(node -e 'console.log(new URL(process.argv[1]).hostname)' "$SITIO")
   curl -fsSL https://github.com/acmesh-official/acme.sh/archive/refs/tags/3.1.0.tar.gz | tar xz
   (cd acme.sh-3.1.0 && ./acme.sh --home "$HOME/.acme.sh" --issue --server letsencrypt --dns dns_cf \
       -d "$DOMINIO" -d "www.$DOMINIO" --keylength ec-256 --force)
@@ -38,7 +48,7 @@ certificado() {
       .then(async r=>{console.log("provisionSiteTLSCertificate:",r.status);if(!r.ok){console.error(await r.text());process.exit(1)}});
   ' "$D" "$NETLIFY_SITE_ID"
   echo "Certificado subido."
-  # El deploy necesita contenido: se reutiliza la copia anterior si existe, o se hace una nueva
+  # El deploy necesita contenido: se hace la copia como siempre
   copia
 }
 

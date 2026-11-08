@@ -35,9 +35,9 @@ export function generarNetlifyToml(o: OpcionesToml): string {
   bloques.push(`# Espejo de ${o.dominio} para el modo liga (emdash-modo-liga). Generado por \`emdash-modo-liga init\`.`);
   bloques.push(`# Durante los partidos de LaLiga el DNS de ${o.dominio} apunta aquí. Lo que no está en la copia`);
   bloques.push(`# se reenvía firmado a ${origen} (signed proxy redirects: la variable ${firma},`);
-  bloques.push(`# ámbito Runtime, con el mismo valor que el secreto MODO_LIGA_FIRMA del Worker).`);
+  bloques.push(`# ámbitos Builds y Runtime, con el mismo valor que el secreto MODO_LIGA_FIRMA del Worker).`);
   bloques.push(`# Las reglas se aplican en orden: la primera que coincide gana.\n`);
-  bloques.push(`[build]\n  publish = ${JSON.stringify(o.publish ?? "publico")}\n  command = "bash build.sh"\n`);
+  bloques.push(`[build]\n  publish = ${JSON.stringify(o.publish ?? "publico")}\n  command = "bash build.sh"\n  # Variables no secretas del build; la única secreta (${firma}) se pone en la UI de Netlify.\n  [build.environment]\n    NODE_VERSION = "24"\n    MODO_LIGA_ORIGEN = ${JSON.stringify(origen)}\n    MODO_LIGA_SITIO = ${JSON.stringify(`https://${o.dominio}`)}\n    MODO_LIGA_MODO = ${JSON.stringify(o.modo)}\n`);
   if (o.conWww !== false) bloques.push(`# www → dominio raíz\n${regla(`https://www.${o.dominio}/*`, `https://${o.dominio}/:splat`, 301, { force: true })}\n`);
   if (o.modo !== "solo-copia") {
     bloques.push(`# ── Reenviadas al Worker con firma ──`);

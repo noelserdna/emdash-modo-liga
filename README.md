@@ -88,7 +88,7 @@ wrangler secret put MODO_LIGA_FOOTBALL_DATA_TOKEN                    # opcional
 npx emdash-modo-liga init --dominio ejemplo.es            # crea espejo/ con netlify.toml, build.sh, package.json y README
 ```
 
-Después, en Netlify: sitio nuevo enlazado al repo con *base directory* `espejo`, dominios `ejemplo.es` y `www.ejemplo.es` (avisará de que el DNS no apunta: es lo esperado), variables de entorno (`ESPEJO_FIRMA` con ámbito Runtime, `MODO_LIGA_ORIGEN`, `MODO_LIGA_SITIO`, `MODO_LIGA_FIRMA`…), un build hook, y desactivar la protección SSO del equipo. Todo está en `espejo/README.md`.
+Después, en Netlify: sitio nuevo enlazado al repo con *base directory* `espejo`, dominios `ejemplo.es` y `www.ejemplo.es` (avisará de que el DNS no apunta: es lo esperado), la variable de entorno `ESPEJO_FIRMA` con todos los ámbitos (las no secretas ya van en `netlify.toml`), un build hook, y desactivar la protección SSO del equipo. Todo está en `espejo/README.md`.
 
 Modos del espejo (`--modo`): `copia-y-proxy` (por defecto; copia estática y lo demás al origen), `proxy-total` (sin copia; todo al origen; para webs complejas) y `solo-copia` (sin exponer el origen; lo dinámico va a `/sin-acceso`).
 

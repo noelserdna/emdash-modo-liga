@@ -15,6 +15,8 @@ export interface OpcionesInit {
   proxiar?: string[];
   parametrosQuery?: string[];
   versionPaquete: string;
+  /** Especificador de la dependencia en espejo/package.json (por defecto `^<versión>` de npm; p. ej. `github:usuario/emdash-modo-liga`). */
+  paquete?: string;
   /** Ruta al directorio `plantillas/` del paquete. */
   plantillas: string;
   forzar?: boolean;
@@ -50,7 +52,7 @@ export async function init(o: OpcionesInit): Promise<string[]> {
         type: "module",
         description: `Espejo de ${o.dominio} para el modo liga (emdash-modo-liga).`,
         scripts: { build: "bash build.sh" },
-        devDependencies: { "emdash-modo-liga": `^${o.versionPaquete}` },
+        devDependencies: { "emdash-modo-liga": o.paquete ?? `^${o.versionPaquete}` },
       },
       null,
       2,
@@ -68,10 +70,11 @@ La genera \`emdash-modo-liga init\`; los pasos manuales están en la documentaci
    (build: \`bash build.sh\`, publish: \`publico\`). Desactivar la protección SSO del equipo si la hay.
 2. Domain management: añadir \`${o.dominio}\` y \`www.${o.dominio}\` como dominios propios. Netlify avisará
    de que el DNS no apunta allí: es lo esperado.
-3. Variables de entorno del sitio: \`ESPEJO_FIRMA\` (ámbito **Runtime**, mismo valor que el secreto
-   \`MODO_LIGA_FIRMA\` del Worker), y para el build: \`MODO_LIGA_ORIGEN=https://${origenHost}\`,
-   \`MODO_LIGA_SITIO=https://${o.dominio}\`, \`MODO_LIGA_FIRMA\`, \`MODO_LIGA_MODO=${modo}\`.
+3. Variables de entorno del sitio (Site configuration → Environment variables): \`ESPEJO_FIRMA\` con **todos los
+   ámbitos** (Builds y Runtime), mismo valor que el secreto \`MODO_LIGA_FIRMA\` del Worker. Las no secretas
+   (\`MODO_LIGA_ORIGEN\`, \`MODO_LIGA_SITIO\`, \`MODO_LIGA_MODO\`, \`NODE_VERSION\`) ya van en \`netlify.toml\`.
    Para el certificado mensual: \`CF_Token\`, \`CF_Zone_ID\`, \`NETLIFY_AUTH_TOKEN\`, \`NETLIFY_SITE_ID\`.
+   Sin \`ESPEJO_FIRMA\` el build publica solo la página de aviso y deja todo lo demás en proxy al origen.
 4. Build hooks: crear uno y guardarlo en el Worker como secreto \`MODO_LIGA_BUILD_HOOK\`.
 5. Lanzar un primer deploy y una vez la tarea \`cert\` (\`curl -X POST -d '{"tarea":"cert"}' <build hook>\`).
 `,

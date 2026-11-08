@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-// CLI: emdash-modo-liga crawl | init | netlify-toml
+// CLI: emdash-modo-liga crawl | init | netlify-toml | aviso
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { readFileSync } from "node:fs";
-import { crawl, type ModoEspejo } from "./crawl.ts";
+import { mkdir, writeFile } from "node:fs/promises";
+import { crawl, paginaAviso, cabeceras, type ModoEspejo } from "./crawl.ts";
 import { init } from "./init.ts";
 import { generarNetlifyToml } from "./netlify.ts";
 
@@ -19,6 +20,8 @@ const AYUDA = `emdash-modo-liga ${version}
                          [--max-query 50] [--concurrencia 4] [--secreto-env MODO_LIGA_FIRMA]
   emdash-modo-liga init  --dominio ejemplo.es [--origen origen.ejemplo.es] [--carpeta espejo] [--modo ...]
                          [--excluir /ruta,/otra] [--proxiar /prefijo] [--query cursor,page,q] [--forzar]
+                         [--paquete github:usuario/emdash-modo-liga]
+  emdash-modo-liga aviso --sitio https://ejemplo.es [--salida publico]      (solo la página /sin-acceso, sin copia)
   emdash-modo-liga netlify-toml --dominio ejemplo.es [--origen origen.ejemplo.es] [--modo ...] [--excluir ...]
 `;
 
@@ -32,7 +35,7 @@ async function main(argv: string[]): Promise<number> {
     options: {
       origen: { type: "string" }, sitio: { type: "string" }, salida: { type: "string", default: "publico" }, modo: { type: "string" },
       extra: { type: "string" }, query: { type: "string" }, "max-query": { type: "string" }, concurrencia: { type: "string" }, "secreto-env": { type: "string", default: "MODO_LIGA_FIRMA" },
-      dominio: { type: "string" }, carpeta: { type: "string", default: "espejo" }, excluir: { type: "string" }, proxiar: { type: "string" }, forzar: { type: "boolean", default: false },
+      dominio: { type: "string" }, carpeta: { type: "string", default: "espejo" }, excluir: { type: "string" }, proxiar: { type: "string" }, forzar: { type: "boolean", default: false }, paquete: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
     allowPositionals: true,
@@ -62,12 +65,21 @@ async function main(argv: string[]): Promise<number> {
     const escritos = await init({
       carpeta: values.carpeta!, dominio: values.dominio, versionPaquete: version, plantillas: join(raizPaquete, "plantillas"), modo: modoDe(values.modo), forzar: values.forzar!,
       ...(values.origen ? { origenHost: values.origen.replace(/^https?:\/\//, "") } : {}),
+      ...(values.paquete ? { paquete: values.paquete } : {}),
       ...(lista(values.excluir) ? { excluir: lista(values.excluir)! } : {}),
       ...(lista(values.proxiar) ? { proxiar: lista(values.proxiar)! } : {}),
       ...(lista(values.query) ? { parametrosQuery: lista(values.query)! } : {}),
     });
     console.log(escritos.length ? `Escritos:\n  ${escritos.join("\n  ")}` : "Nada que escribir (ya existía todo; usa --forzar para sobrescribir).");
     console.log(`\nSiguiente: lee ${join(values.carpeta!, "README.md")} para los pasos en Netlify y Cloudflare.`);
+    return 0;
+  }
+  if (comando === "aviso") {
+    if (!values.sitio) throw new Error("Falta --sitio");
+    await mkdir(values.salida!, { recursive: true });
+    await writeFile(join(values.salida!, "sin-acceso.html"), paginaAviso(null, values.sitio));
+    await writeFile(join(values.salida!, "_headers"), cabeceras());
+    console.log(`Página de aviso escrita en ${values.salida}/sin-acceso.html (sin copia del sitio).`);
     return 0;
   }
   if (comando === "netlify-toml") {
