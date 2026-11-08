@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Guía sin tecnicismos del plugin emdash-modo-liga: por qué una web alojada en Cloudflare deja de cargar en España los días de partido y cómo el plugin la mantiene abierta.">
+<link rel="canonical" href="https://noelserdna.github.io/emdash-modo-liga/">
+<style>/* Base equivalente a la del visor de artefactos de claude.ai, donde nació esta página */
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Modo liga para EmDash</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Instrument+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: una columna de lectura (46rem) sobre papel frío; una banda ancha con la línea
+   de tiempo de un partido como único alarde visual; las capturas van enmarcadas con pie. */
+:root {
+  --bg: #f4f6f1;
+  --surface: #ffffff;
+  --fg: #16201b;
+  --muted: #5b6a62;
+  --line: #d6ddd6;
+  --accent: #1f7a4a;      /* césped */
+  --accent-ink: #ffffff;
+  --accent-soft: #e3f1e8;
+  --warn: #b4530a;        /* bloqueo */
+  --warn-soft: #fbeadb;
+  --font-display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --font-body: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1512; --surface: #171f1a; --fg: #e9ede9; --muted: #9ca8a0; --line: #28332c;
+    --accent: #52c58d; --accent-ink: #0f1512; --accent-soft: #15301f; --warn: #f0a35c; --warn-soft: #3a2411;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1512; --surface: #171f1a; --fg: #e9ede9; --muted: #9ca8a0; --line: #28332c;
+  --accent: #52c58d; --accent-ink: #0f1512; --accent-soft: #15301f; --warn: #f0a35c; --warn-soft: #3a2411;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: 1.0625rem; line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap {
+  max-width: 46rem; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+header.portada { padding-block: 3.5rem 2.5rem; }
+.eyebrow {
+  font-family: var(--font-mono); font-size: .75rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted); margin: 0 0 1rem;
+}
+h1, h2, h3 { font-family: var(--font-display); font-weight: 400; line-height: 1.1; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.4rem, 6vw, 3.6rem); letter-spacing: -.01em; }
+h2 { font-size: clamp(1.7rem, 4vw, 2.2rem); margin-block: 0 1rem; }
+h3 { font-size: 1.35rem; margin-block: 0 .5rem; }
+.lead { font-size: 1.25rem; line-height: 1.5; color: var(--fg); margin: 1.25rem 0 0; max-width: 38rem; }
+p { margin: 0 0 1rem; }
+section { padding-block: 2.5rem; border-top: 1px solid var(--line); }
+section.banda { border-top: 0; background: var(--surface); }
+section.banda > .wrap { padding-block: 2.5rem; }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: .15em; }
+a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+strong { font-weight: 600; }
+ul, ol { padding-left: 1.25rem; margin: 0 0 1rem; }
+li { margin-bottom: .5rem; }
+li::marker { color: var(--muted); }
+
+/* línea de tiempo */
+.timeline { width: 100%; height: auto; display: block; margin-top: 1.5rem; }
+.timeline text { font-family: var(--font-body); fill: var(--fg); }
+.timeline .peq { font-size: 13px; fill: var(--muted); }
+.timeline .eje { stroke: var(--line); stroke-width: 2; }
+.timeline .partido { fill: var(--accent); }
+.timeline .bloqueo { fill: var(--warn); opacity: .9; }
+.timeline .espejo { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+.timeline .marca { stroke: var(--fg); stroke-width: 1.5; }
+.leyenda { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; margin-top: .75rem; font-size: .95rem; color: var(--muted); }
+.leyenda span::before { content: ""; display: inline-block; width: .8em; height: .8em; border-radius: 2px; margin-right: .45em; vertical-align: -.05em; }
+.leyenda .l-partido::before { background: var(--accent); }
+.leyenda .l-bloqueo::before { background: var(--warn); }
+.leyenda .l-espejo::before { background: var(--accent-soft); outline: 1.5px solid var(--accent); outline-offset: -1.5px; }
+
+/* dos estados */
+.estados { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+.estado { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem; min-width: 0; }
+.estado h3 { display: flex; align-items: center; gap: .6rem; }
+.pastilla { font-family: var(--font-mono); font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; padding: .2rem .55rem; border-radius: 999px; }
+.pastilla.ok { background: var(--accent-soft); color: var(--accent); }
+.pastilla.liga { background: var(--warn-soft); color: var(--warn); }
+.ruta { list-style: none; padding: 0; margin: .75rem 0 0; display: grid; gap: .4rem; }
+.ruta li { margin: 0; padding-left: 1.4rem; position: relative; }
+.ruta li::before { content: "→"; position: absolute; left: 0; color: var(--muted); }
+.ruta li.nota { color: var(--muted); font-size: .95rem; }
+.ruta li.nota::before { content: "·"; }
+
+/* capturas */
+.figuras { display: grid; gap: 1.5rem; margin-top: 1.5rem; }
+figure { margin: 0; min-width: 0; }
+.marco { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: .5rem; overflow: hidden; }
+.marco img { display: block; width: 100%; height: auto; max-width: 100%; border-radius: 6px; }
+figcaption { font-size: .95rem; color: var(--muted); margin-top: .6rem; line-height: 1.5; }
+figcaption strong { color: var(--fg); font-weight: 600; }
+.dos { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 1.5rem; }
+
+/* pasos y ajustes */
+.pasos { counter-reset: paso; list-style: none; padding: 0; margin: 1.5rem 0 0; display: grid; gap: 1rem; }
+.pasos li { counter-increment: paso; display: grid; grid-template-columns: 2.4rem 1fr; gap: .9rem; margin: 0; }
+.pasos li::before {
+  content: counter(paso); font-family: var(--font-display); font-size: 1.6rem; line-height: 1;
+  color: var(--accent); padding-top: .15rem;
+}
+.pasos b { display: block; font-weight: 600; margin-bottom: .2rem; }
+.pasos small { color: var(--muted); }
+dl.ajustes { display: grid; grid-template-columns: minmax(9rem, 14rem) 1fr; gap: .6rem 1.25rem; margin: 1.25rem 0 0; }
+dl.ajustes dt { font-weight: 600; }
+dl.ajustes dd { margin: 0; color: var(--muted); }
+dl.ajustes dd code, p code, li code { font-family: var(--font-mono); font-size: .9em; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: .05em .35em; }
+@media (max-width: 520px) { dl.ajustes { grid-template-columns: 1fr; gap: .15rem; } dl.ajustes dd { margin-bottom: .75rem; } }
+
+/* aviso */
+.aviso { border-left: 3px solid var(--warn); background: var(--warn-soft); padding: 1rem 1.25rem; border-radius: 0 8px 8px 0; margin: 1.5rem 0 0; }
+.aviso p:last-child { margin: 0; }
+
+/* FAQ */
+details { border-top: 1px solid var(--line); padding: .9rem 0; }
+details:last-of-type { border-bottom: 1px solid var(--line); }
+summary { cursor: pointer; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 1rem; }
+summary::-webkit-details-marker { display: none; }
+summary::after { content: "+"; color: var(--muted); font-family: var(--font-mono); }
+details[open] summary::after { content: "−"; }
+details p { margin: .75rem 0 0; color: var(--fg); }
+
+/* enlaces finales */
+.enlaces { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+.enlace { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; min-width: 0; }
+.enlace a { font-weight: 600; }
+.enlace p { margin: .35rem 0 0; color: var(--muted); font-size: .95rem; }
+footer { padding-block: 2rem 3rem; color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line); }
+@media (prefers-reduced-motion: no-preference) { details p { animation: aparece .2s ease-out; } }
+@keyframes aparece { from { opacity: .4; } to { opacity: 1; } }
+</style>
+</head>
+<body>
+
+<header class="portada">
+  <div class="wrap">
+    <p class="eyebrow">emdash-modo-liga · guía para quien no programa</p>
+    <h1>Modo liga: tu web sigue abierta cuando hay fútbol</h1>
+    <p class="lead">Los días de partido de LaLiga, muchas webs españolas desaparecen durante unas horas. Este complemento de EmDash hace que la tuya no: avisa a quien la visita, la mueve a un sitio seguro mientras dura el bloqueo y la devuelve sola cuando termina.</p>
+  </div>
+</header>
+
+<section class="banda">
+  <div class="wrap">
+    <h2>Qué pasa los días de partido</h2>
+    <p>Desde diciembre de 2024, por una orden judicial que pidió LaLiga, las operadoras españolas (Movistar, Orange, Vodafone, Digi y otras) cortan el acceso a ciertas direcciones de internet mientras se juega un partido. El problema es que esas direcciones son compartidas: pertenecen a Cloudflare, la empresa que sirve miles de webs legales, entre ellas la tuya. Cuando bloquean una dirección por una web pirata, caen con ella todas las demás.</p>
+    <p>El bloqueo no avisa. Quien intenta entrar en tu web desde España ve un error de conexión, como si la web no existiera. Fuera de España, y para Google, todo sigue funcionando. Y una hora después del partido, todo vuelve a la normalidad sin que nadie haya tocado nada.</p>
+    <svg class="timeline" viewBox="0 0 760 170" role="img" aria-labelledby="tl-titulo">
+      <title id="tl-titulo">Un partido a las 21:00: el bloqueo empieza unos minutos antes y termina hasta una hora después del final; el modo liga se activa media hora antes y se desactiva cuando el bloqueo desaparece.</title>
+      <!-- escala: 60 px por hora, 19:30 en x=40 → 00:30 en x=340+… (19:30 → 00:30 = 5 h = 300 px… ampliamos a 120 px/h) -->
+      <!-- eje de 19:30 (x=40) a 01:00 (x=700): 5,5 h ⇒ 120 px/h -->
+      <line class="eje" x1="40" y1="110" x2="720" y2="110"/>
+      <!-- marcas horarias -->
+      <g class="peq">
+        <text x="100" y="140" text-anchor="middle">20:00</text>
+        <text x="220" y="140" text-anchor="middle">21:00</text>
+        <text x="340" y="140" text-anchor="middle">22:00</text>
+        <text x="460" y="140" text-anchor="middle">23:00</text>
+        <text x="580" y="140" text-anchor="middle">00:00</text>
+        <text x="700" y="140" text-anchor="middle">01:00</text>
+      </g>
+      <g class="marca">
+        <line x1="100" y1="104" x2="100" y2="116"/><line x1="220" y1="104" x2="220" y2="116"/><line x1="340" y1="104" x2="340" y2="116"/>
+        <line x1="460" y1="104" x2="460" y2="116"/><line x1="580" y1="104" x2="580" y2="116"/><line x1="700" y1="104" x2="700" y2="116"/>
+      </g>
+      <!-- modo liga: de 20:30 (x=160) a ~23:15 (x=490) -->
+      <rect class="espejo" x="160" y="22" width="330" height="26" rx="4"/>
+      <text x="170" y="40" font-size="14">Modo liga activo: la web se sirve desde la copia segura</text>
+      <!-- bloqueo real: de 20:50 (x=200) a ~23:05 (x=470) -->
+      <rect class="bloqueo" x="200" y="60" width="270" height="18" rx="3"/>
+      <text class="peq" x="200" y="55">Bloqueo de las operadoras (empieza 5-10 min antes, dura hasta 75 min después)</text>
+      <!-- partido: 21:00 (x=220) a 22:50 (x=440) -->
+      <rect class="partido" x="220" y="86" width="220" height="18" rx="3"/>
+      <text x="226" y="100" font-size="13" fill="#ffffff" style="fill:var(--accent-ink)">Partido 21:00 – 22:50</text>
+    </svg>
+    <div class="leyenda" aria-hidden="true">
+      <span class="l-partido">Partido</span>
+      <span class="l-bloqueo">Bloqueo real medido por hayahora.futbol</span>
+      <span class="l-espejo">Modo liga (empieza antes por seguridad y acaba cuando el bloqueo desaparece)</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Qué hace el plugin</h2>
+    <p>Cada cinco minutos mira dos cosas: el calendario de Primera y Segunda División, y un medidor público de bloqueos (hayahora.futbol) que dice qué direcciones están cortadas ahora mismo. Con eso decide si tu web está en peligro. Si lo está, cambia una señal de tráfico en internet para que los visitantes lleguen a una <strong>copia de emergencia</strong> alojada en otra empresa (Netlify) que las operadoras no bloquean. Cuando el peligro pasa, deshace el cambio.</p>
+    <div class="estados">
+      <div class="estado">
+        <h3>Día normal <span class="pastilla ok">normal</span></h3>
+        <ul class="ruta">
+          <li>Quien visita tu web entra por Cloudflare, como siempre.</li>
+          <li>Todo funciona igual que hoy: artículos, buscador, panel de administración.</li>
+          <li class="nota">El plugin solo observa y, si has publicado algo, actualiza la copia de emergencia.</li>
+        </ul>
+      </div>
+      <div class="estado">
+        <h3>Hay partido <span class="pastilla liga">modo liga</span></h3>
+        <ul class="ruta">
+          <li>Quien visita tu web llega a la copia de emergencia en Netlify.</li>
+          <li>Los artículos y las páginas se leen con normalidad.</li>
+          <li>El buscador, el panel de administración y Claude siguen funcionando por una puerta trasera segura que solo la copia conoce.</li>
+          <li class="nota">Un aviso discreto explica lo que pasa e invita a quejarse a LaLiga y Cloudflare en X.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="banda">
+  <div class="wrap">
+    <h2>Lo que ve quien visita tu web</h2>
+    <p>Son capturas reales de isabellobato.es con el plugin instalado. El aviso aparece abajo, sin tapar nada, y se puede cerrar.</p>
+    <div class="figuras">
+      <figure>
+        <div class="marco"><img src="img/banner-antes.jpg" width="823" height="532" alt="Página de artículos de la web con una franja al pie que avisa de que hoy hay partido de LaLiga y de que la web puede dejar de cargar" loading="lazy"></div>
+        <figcaption><strong>Antes del partido.</strong> Desde dos horas antes, la web avisa: «Hoy hay partido de LaLiga: si esta web deja de cargar, es por los bloqueos a Cloudflare. Volveremos en cuanto termine.»</figcaption>
+      </figure>
+      <figure>
+        <div class="marco"><img src="img/banner-durante.png" width="1500" height="62" alt="Franja al pie de la web: Estamos en horario de bloqueo por el fútbol. Si algo no carga, no es cosa tuya. Quejarse en X" loading="lazy"></div>
+        <figcaption><strong>Durante el bloqueo.</strong> El texto cambia y añade el enlace «Quejarse en X», que abre un mensaje ya escrito mencionando a @LaLiga y @Cloudflare. Solo hay que pulsar «Publicar».</figcaption>
+      </figure>
+      <div class="dos">
+        <figure>
+          <div class="marco"><img src="img/portada-espejo.jpg" width="823" height="532" alt="Portada de la web servida desde la copia de emergencia, con la franja: Estás viendo la copia de emergencia de isabellobato.es mientras dura el bloqueo de LaLiga" loading="lazy"></div>
+          <figcaption><strong>La copia de emergencia.</strong> Es idéntica a la web. La única diferencia visible es la franja del pie, que explica que es una copia.</figcaption>
+        </figure>
+        <figure>
+          <div class="marco"><img src="img/sin-acceso.jpg" width="823" height="532" alt="Página de aviso titulada Hoy hay fútbol y puede que no llegues a isabellobato.es, con la explicación del bloqueo y un botón Publicar en X" loading="lazy"></div>
+          <figcaption><strong>La página de aviso.</strong> Explica el bloqueo en dos párrafos, pide disculpas y ofrece el botón «Publicar en X». Todos estos textos se cambian desde el panel de EmDash.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Lo que haces tú los días de partido: nada</h2>
+    <p>El plugin trabaja solo. No hay que mirar el calendario ni acordarse de activar nada. Si publicas un artículo, la copia de emergencia se actualiza al cuarto de hora. Si LaLiga cambia un horario, el plugin lo lee ese mismo día.</p>
+    <p>Aun así tienes tres mandos, en el panel de EmDash (Plugins → modo-liga) o pidiéndoselo a Claude si tienes conectado el MCP de tu web:</p>
+    <ul>
+      <li><strong>Ver el estado.</strong> Si ahora mismo la web va por la copia, por qué, y cuándo son las próximas ventanas de partidos. A Claude: «¿cómo está el modo liga de mi web?».</li>
+      <li><strong>Forzar.</strong> «on» pone la copia ya, aunque no haya partido (útil para probar o si detectas un bloqueo raro). «off» la impide. «auto» vuelve a lo normal. A Claude: «activa el modo liga» o «vuelve a automático».</li>
+      <li><strong>Actualizar la copia.</strong> Pide que se regenere ahora mismo. A Claude: «sincroniza la copia de emergencia».</li>
+    </ul>
+    <div class="aviso">
+      <p><strong>Un detalle que conviene saber.</strong> Mientras la web va por la copia, Google también la ve así. No pasa nada: la copia conserva las mismas direcciones y el mismo contenido. Y si la copia también fallara algún día (Netlify no es inmune, aunque hoy no está en las listas de bloqueo), la web volvería a Cloudflare sola en cuanto acabe la ventana.</p>
+    </div>
+  </div>
+</section>
+
+<section class="banda">
+  <div class="wrap">
+    <h2>Qué hay que preparar una vez</h2>
+    <p>Esta parte la hace una persona técnica, tarda una tarde y no se repite. Son seis pasos; la guía detallada, con los comandos exactos, está en el repositorio del plugin.</p>
+    <ol class="pasos">
+      <li><div><b>Instalar el plugin en la web</b><small>Una línea en la configuración de EmDash y otra en el fichero del Worker de Cloudflare. El plugin aparece en el panel con su formulario de ajustes.</small></div></li>
+      <li><div><b>Crear la copia de emergencia en Netlify</b><small>Una cuenta gratuita de Netlify, un sitio enlazado al repositorio de la web y el comando <code>emdash-modo-liga init</code>, que prepara la carpeta con todo lo necesario.</small></div></li>
+      <li><div><b>Guardar tres secretos en el Worker</b><small>La contraseña compartida entre la web y la copia, un permiso de Cloudflare para cambiar la señal de tráfico (solo de este dominio) y la dirección que pide a Netlify que regenere la copia.</small></div></li>
+      <li><div><b>Ajustar el dominio en Cloudflare</b><small>El dominio tiene que estar enganchado al Worker por «rutas» y apuntar, con el proxy activado, a la copia de Netlify. Es un cambio de producción: se hace una sola vez y con cuidado.</small></div></li>
+      <li><div><b>Certificado de la copia</b><small>Netlify necesita un certificado de seguridad propio para tu dominio, que el plugin renueva cada mes de forma automática. La primera vez se lanza a mano.</small></div></li>
+      <li><div><b>Ensayo general</b><small>Un día sin partido se pone «forzar: on», se comprueba que la web se ve desde la copia, que el panel y el buscador funcionan, y se vuelve a «auto».</small></div></li>
+    </ol>
+    <p><b>Dónde está isabellobato.es a 8 de noviembre de 2026 (20:40).</b> Todo en marcha y probado en vivo. Los cinco pasos están hechos: el plugin va en el código de la web, la copia de emergencia existe en Netlify (proyecto <code>isabellobato-espejo</code>) con una copia completa de la web y su propio certificado, los tres secretos están puestos y el dominio ya está preparado para cambiar de sitio. A las 20:30, en pleno bloqueo del partido de las 21:00, el plugin pasó la señal de tráfico a Netlify y la web volvió a cargar desde una conexión española bloqueada, con el buscador y el panel funcionando a través de la copia. Esa misma tarde el bloqueo real sirvió para corregir dos fallos del plugin. Queda por confirmar la vuelta automática a Cloudflare cuando acabe el partido y dejar configurada la renovación automática del certificado.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Los ajustes, explicados</h2>
+    <p>Todo se cambia desde el panel de EmDash sin tocar código. Los valores de serie funcionan bien; estos son los que más sentido tiene revisar.</p>
+    <dl class="ajustes">
+      <dt>Forzar modo liga</dt><dd>Automático, on u off. El mando manual.</dd>
+      <dt>Política de activación</dt><dd>«Calendario y detección» (recomendada), solo calendario o solo detección.</dd>
+      <dt>Minutos antes / desde el inicio</dt><dd>Cuánto antes del partido se activa (30 min) y cuánto dura la ventana como máximo (3 h 30).</dd>
+      <dt>Ligas en ESPN</dt><dd>Primera y Segunda de serie. Se puede añadir Copa del Rey o Champions.</dd>
+      <dt>Consultar hayahora.futbol</dt><dd>Activado de serie. Permite acortar la ventana cuando el bloqueo termina pronto y reaccionar a bloqueos fuera de horario.</dd>
+      <dt>Esperar tras publicar</dt><dd>Minutos que espera antes de regenerar la copia cuando publicas algo (15).</dd>
+      <dt>Mensaje para X</dt><dd>El texto de la queja. Cabe en una publicación y menciona a @LaLiga y @Cloudflare.</dd>
+      <dt>Textos del aviso y del banner</dt><dd>Título, explicación, botón y las tres frases del pie de página. Puedes escribirlos con tu voz.</dd>
+    </dl>
+  </div>
+</section>
+
+<section class="banda">
+  <div class="wrap">
+    <h2>Preguntas frecuentes</h2>
+    <details>
+      <summary>¿Quien visita la web durante un partido nota algo?</summary>
+      <p>Ve la web igual, con una franja al pie que explica la situación. Los artículos cargan desde la copia; el buscador y el panel funcionan a través de ella. Lo único que puede ir algo más lento es la primera carga, porque la copia está en otro proveedor.</p>
+    </details>
+    <details>
+      <summary>¿Por qué no basta con cambiar de proveedor y dejar Cloudflare?</summary>
+      <p>Porque los bloqueos han alcanzado a otros proveedores (Amazon, Vercel, GitHub Pages, Bunny…). Cloudflare sigue siendo la mejor opción el resto del tiempo. El plugin lo mantiene y solo lo esquiva durante las ventanas de riesgo.</p>
+    </details>
+    <details>
+      <summary>¿Y si hay un bloqueo sin partido, un martes por la noche?</summary>
+      <p>Pasa, sobre todo en noches de Champions. Por eso el plugin también consulta hayahora.futbol: si detecta que las direcciones de tu web están bloqueadas, activa el modo liga aunque el calendario no diga nada, y lo desactiva cuando el bloqueo desaparece.</p>
+    </details>
+    <details>
+      <summary>¿Hasta cuándo va a hacer falta esto?</summary>
+      <p>La orden judicial cubre tres temporadas y expira hacia junio de 2027. LaLiga ha anunciado que intentará prorrogarla. Si algún día deja de hacer falta, basta con poner «forzar: off» o desactivar el plugin.</p>
+    </details>
+    <details>
+      <summary>¿Puede usarlo otra web que no sea esta?</summary>
+      <p>Sí. El plugin es genérico: cualquier web hecha con EmDash en Cloudflare lo puede instalar. Nada del código es específico de isabellobato.es; el dominio, los textos y las cuentas se configuran en cada sitio.</p>
+    </details>
+    <details>
+      <summary>¿Cuánto cuesta?</summary>
+      <p>Nada más allá de lo que ya pagas. Netlify, hayahora.futbol y el calendario de ESPN tienen versiones gratuitas suficientes para una web como esta. El plugin es de código abierto con licencia MIT.</p>
+    </details>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Dónde está todo</h2>
+    <div class="enlaces">
+      <div class="enlace">
+        <a href="https://github.com/noelserdna/emdash-modo-liga" rel="noopener">github.com/noelserdna/emdash-modo-liga</a>
+        <p>El código del plugin, la guía técnica de instalación (README) y las plantillas para Netlify.</p>
+      </div>
+      <div class="enlace">
+        <a href="https://hayahora.futbol/" rel="noopener">hayahora.futbol</a>
+        <p>El medidor público de bloqueos. Sirve para comprobar en cualquier momento si hay bloqueo activo y qué operadoras lo aplican.</p>
+      </div>
+      <div class="enlace">
+        <a href="https://laligagate.com/" rel="noopener">laligagate.com</a>
+        <p>La plataforma de afectados. Recoge casos, pérdidas declaradas y las vías de queja ante LaLiga, las operadoras y la Comisión Europea.</p>
+      </div>
+    </div>
+    <div class="dos" style="margin-top:1.5rem">
+      <figure>
+        <div class="marco"><img src="img/github.jpg" width="734" height="430" alt="Página del repositorio emdash-modo-liga en GitHub, con las carpetas plantillas, src y test y los dos README" loading="lazy"></div>
+        <figcaption><strong>El repositorio en GitHub.</strong> Público desde el 8 de noviembre de 2026.</figcaption>
+      </figure>
+      <figure>
+        <div class="marco"><img src="img/hayahora.jpg" width="734" height="430" alt="Portada de hayahora.futbol, el monitor de bloqueos de IPs de LaLiga" loading="lazy"></div>
+        <figcaption><strong>hayahora.futbol.</strong> El plugin le pregunta cada cinco minutos qué direcciones están bloqueadas y las cruza con las de tu web.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>Guía escrita el 8 de noviembre de 2026 para la versión 0.1.0 del plugin. Las capturas son del sitio isabellobato.es en pruebas locales. Datos sobre los bloqueos: OONI («LaLiga collateral», junio de 2026) y hayahora.futbol.</p>
+  </div>
+</footer>
+</body>
+</html>
