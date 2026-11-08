@@ -1,0 +1,72 @@
+{
+  "name": "emdash-modo-liga",
+  "version": "0.1.0",
+  "description": "Plugin de EmDash CMS para seguir en línea durante los bloqueos de LaLiga a Cloudflare en España: ventanas por calendario, detección con hayahora.futbol, cambio de DNS y espejo en Netlify.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Andrés León",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/noelserdna/emdash-modo-liga"
+  },
+  "keywords": [
+    "emdash",
+    "emdash-plugin",
+    "cloudflare",
+    "laliga",
+    "netlify",
+    "espejo",
+    "failover"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "default": "./dist/plugin.js"
+    },
+    "./worker": {
+      "types": "./dist/worker/index.d.ts",
+      "default": "./dist/worker/index.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "default": "./dist/core/index.js"
+    }
+  },
+  "bin": {
+    "emdash-modo-liga": "./dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "plantillas",
+    "README.md",
+    "README.en.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "emdash": "1.4.0",
+    "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "zod": "^4.0.0"
+  },
+  "peerDependencies": {
+    "emdash": ">=1.4.0"
+  },
+  "peerDependenciesMeta": {
+    "emdash": {
+      "optional": true
+    }
+  }
+}

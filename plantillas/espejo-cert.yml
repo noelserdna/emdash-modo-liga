@@ -1,0 +1,32 @@
+# Certificado TLS del espejo (alternativa a la tarea "cert" del build de Netlify).
+# Netlify solo renueva Let's Encrypt si el DNS apunta a Netlify, y casi siempre
+# apunta a Cloudflare: se emite por DNS-01 y se sube como certificado propio.
+# Secretos: CF_DNS_API_TOKEN (Zone→DNS→Edit, solo esa zona), NETLIFY_AUTH_TOKEN, NETLIFY_SITE_ID.
+name: Certificado del espejo
+on:
+  schedule:
+    - cron: "0 3 1 * *"
+  workflow_dispatch:
+jobs:
+  certificado:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Emitir con acme.sh (DNS-01 en Cloudflare)
+        env:
+          CF_Token: ${{ secrets.CF_DNS_API_TOKEN }}
+          CF_Zone_ID: ZONA_ID_AQUI
+        run: |
+          curl -fsSL https://github.com/acmesh-official/acme.sh/archive/refs/tags/3.1.0.tar.gz | tar xz
+          cd acme.sh-3.1.0
+          ./acme.sh --home "$HOME/.acme.sh" --issue --server letsencrypt --dns dns_cf \
+            -d EJEMPLO.es -d www.EJEMPLO.es --keylength ec-256 --force
+      - name: Subir a Netlify
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          D="$HOME/.acme.sh/EJEMPLO.es_ecc"
+          DATOS=$(jq -n --arg site "$NETLIFY_SITE_ID" --rawfile cert "$D/EJEMPLO.es.cer" --rawfile key "$D/EJEMPLO.es.key" --rawfile ca "$D/ca.cer" \
+            '{site_id: $site, certificate: $cert, key: $key, ca_certificates: $ca}')
+          npx --yes netlify-cli@27 api provisionSiteTLSCertificate --data "$DATOS" > /dev/null

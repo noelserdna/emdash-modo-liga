@@ -1,0 +1,30 @@
+# Alternativa a Netlify build hooks: GitHub Actions genera la copia y la despliega.
+# Secretos: MODO_LIGA_FIRMA, NETLIFY_AUTH_TOKEN, NETLIFY_SITE_ID.
+# Dispara con repository_dispatch (driver "webhook" del plugin) o a diario.
+name: Espejo (modo liga)
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  repository_dispatch:
+    types: [modo-liga]
+  workflow_dispatch:
+concurrency:
+  group: espejo
+  cancel-in-progress: false
+jobs:
+  desplegar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Copia anónima desde el origen
+        env:
+          MODO_LIGA_FIRMA: ${{ secrets.MODO_LIGA_FIRMA }}
+        run: npx emdash-modo-liga crawl --origen https://origen.EJEMPLO.es --sitio https://EJEMPLO.es --modo copia-y-proxy --salida publico
+      - name: Desplegar en Netlify
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: npx --yes netlify-cli@27 deploy --prod --dir publico --site "$NETLIFY_SITE_ID" --message "Copia $(date -u +%F)"
