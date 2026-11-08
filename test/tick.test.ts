@@ -72,7 +72,7 @@ test("primer tick fuera de ventana: lee un día de ESPN, captura el DNS normal, 
   assert.deepEqual([informe.dentro, informe.motivo, informe.ventanas], [false, "ninguno", 1]); // 13:00…20:00 encadenados → 1 ventana 12:30–23:30
   assert.equal(informe.proximaVentana, "2026-11-08T12:30:00.000Z");
   assert.deepEqual(informe.horarios, { dia: "2026-11-08", partidos: 5, errores: [] });
-  assert.equal(informe.dns, "capturado:ejemplo.es,www.ejemplo.es");
+  assert.equal(informe.dns, "capturado:ejemplo.es,www.ejemplo.es;ejemplo.es:ok,www.ejemplo.es:ok"); // captura y comprueba en el mismo tick
   assert.equal(informe.deteccion, "no-consultada"); // a más de 2 h
   assert.equal(dns.cambios.length, 0);
   const estado = ctx._kv.get(CLAVE_ESTADO) as Estado;
@@ -81,6 +81,26 @@ test("primer tick fuera de ventana: lee un día de ESPN, captura el DNS normal, 
   assert.equal(Object.keys(estado.dns.normales).length, 2);
   // Subrequests: 1 ESPN + 2 DoH (+ DNS por el driver falso, fuera de fetch)
   assert.equal(f.llamadas.length, 3);
+});
+
+test("primer tick dentro de la ventana con registros con proxy: captura el estado normal y pasa a DNS only en el mismo tick", async () => {
+  const ctx = ctxFalso({ zonaId: "zona", competicionesEspn: "esp.1" });
+  const dns = dnsFalso(registros());
+  const informe = await ejecutarTick(ctx, {}, { fetchFn: fetchFalso(["188.114.96.5"]).fn, ahora: t("2026-11-08T14:00:00Z"), env, driverDns: dns.driver });
+  assert.deepEqual([informe.dentro, informe.motivo], [true, "calendario"]);
+  assert.equal(informe.dns, "capturado:ejemplo.es,www.ejemplo.es;ejemplo.es:→liga,www.ejemplo.es:→liga");
+  assert.ok(dns.registros.every((r) => r.proxied === false && r.ttl === 60));
+  const estado = ctx._kv.get(CLAVE_ESTADO) as Estado;
+  assert.equal(Object.keys(estado.dns.normales).length, 2);
+  assert.equal(estado.dns.normales["ejemplo.es"]!.proxied, true, "lo capturado es el estado normal (con proxy), no el de liga");
+  // Un registro que ya está en DNS only dentro de la ventana no se captura, se avisa y no se toca
+  const ctx2 = ctxFalso({ zonaId: "zona", competicionesEspn: "esp.1" });
+  const dns2 = dnsFalso([{ ...registros()[0]!, proxied: false, ttl: 60 }, registros()[1]!]);
+  const informe2 = await ejecutarTick(ctx2, {}, { fetchFn: fetchFalso().fn, ahora: t("2026-11-08T14:00:00Z"), env, driverDns: dns2.driver });
+  assert.equal(informe2.dns, "capturado:www.ejemplo.es;www.ejemplo.es:→liga");
+  const estado2 = ctx2._kv.get(CLAVE_ESTADO) as Estado;
+  assert.ok(estado2.dns.problemas.some((p) => /forzado=off/.test(p)));
+  assert.deepEqual(dns2.cambios.map((c) => c.id), ["r2"]);
 });
 
 test("tick dentro de la ventana: pasa el DNS a DNS only; después, con la cola limpia, vuelve", async () => {

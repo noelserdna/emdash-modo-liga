@@ -125,22 +125,28 @@ export async function ejecutarTick(ctx: Ctx, opciones: OpcionesModoLiga = {}, de
     informe.dns = "sin-configurar";
   } else {
     try {
+      // Captura del estado normal. Un registro con proxy es normal por construcción (el plugin solo
+      // quita el proxy), así que se puede capturar también dentro de una ventana; lo que no se
+      // captura nunca es un registro en DNS only, porque podría estar ya en modo liga.
+      let recienCapturado = false;
       if (!Object.keys(estado.dns.normales).length) {
-        if (decision.dentro) {
-          informe.dns = "sin-estado-normal";
-          estado.dns.problemas = ["Hay que capturar el estado normal fuera de una ventana: pon forzado=off un momento o espera."];
-        } else {
-          const cap = await capturarNormales(driver, c.registros);
-          estado.dns = { ...estado.dns, normales: cap.normales, problemas: cap.problemas, capturadoAt: ahora, comprobadoAt: ahora };
-          informe.dns = Object.keys(cap.normales).length ? `capturado:${Object.keys(cap.normales).join(",")}` : `sin-capturar:${cap.problemas.join(" | ")}`;
-        }
-      } else if (decision.cambia || estado.dns.comprobadoAt === null || ahora - estado.dns.comprobadoAt > TREINTA_MIN) {
+        const cap = await capturarNormales(driver, c.registros);
+        const nombres = Object.keys(cap.normales);
+        const problemas = decision.dentro && cap.problemas.length
+          ? [...cap.problemas, "Dentro de una ventana solo se capturan registros con proxy: si están en DNS only, espera a que termine o pon forzado=off un momento."]
+          : cap.problemas;
+        estado.dns = { ...estado.dns, normales: cap.normales, problemas, capturadoAt: nombres.length ? ahora : null, comprobadoAt: null };
+        informe.dns = nombres.length ? `capturado:${nombres.join(",")}` : `sin-capturar:${cap.problemas.join(" | ")}`;
+        recienCapturado = nombres.length > 0;
+      }
+      if (Object.keys(estado.dns.normales).length && (recienCapturado || decision.cambia || estado.dns.comprobadoAt === null || ahora - estado.dns.comprobadoAt > TREINTA_MIN)) {
         const cambios = await aplicar(driver, estado.dns.normales, decision.dentro);
         estado.dns.comprobadoAt = ahora;
         estado.dns.ultimo = cambios;
         if (cambios.some((x) => x.cambiado)) estado.dns.ultimoCambioAt = ahora;
-        informe.dns = cambios.map((x) => `${x.nombre}:${x.cambiado ? (decision.dentro ? "→liga" : "→normal") : "ok"}`).join(",");
-      } else informe.dns = "sin-comprobar";
+        const detalle = cambios.map((x) => `${x.nombre}:${x.cambiado ? (decision.dentro ? "→liga" : "→normal") : "ok"}`).join(",");
+        informe.dns = recienCapturado ? `${informe.dns};${detalle}` : detalle;
+      } else if (!recienCapturado && Object.keys(estado.dns.normales).length) informe.dns = "sin-comprobar";
     } catch (e) {
       informe.dns = `error:${String(e)}`;
       estado.dns.ultimo = String(e);
